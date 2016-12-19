@@ -1,4 +1,19 @@
-﻿using UnityEngine;
+﻿/* 
+    MLH Tic-Hac-Noe
+    Game Manager
+
+    This script manages the entire game through execution.
+
+    Programmed by Gregory Desrosiers 
+    Candidate for Bachelor of Software Engineering (University of Waterloo)
+
+    Programming Date: December 3, 2016
+    Comments Added and Additional Fixes: December 18, 2016
+
+    File Name: GameManager.cs
+*/
+
+using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
 
@@ -6,24 +21,27 @@ public enum CurrentState { PLAYER_ONE_TOKEN_ONE, PLAYER_ONE_TOKEN_TWO, PLAYER_TW
 
 public class GameManager : MonoBehaviour
 {
+    // We use the singleton design principle, where only one instance of this can be used at any time throughout execution.
     public static GameManager gameManager;
 
-
-    // Game Stats Properties
+    /* Game Stats Properties */
     public CurrentState currentState;
-    private bool moveMade;
+    private bool moveMade; // Trigger variable
     private int spacesRemaining = 0;
-    private int numberOfPlayerOneWins = 0;
-    private int numberOfPlayerTwoWins = 0;
+    private int numberOfPlayerOneWins = 0; // Player 1 Score
+    private int numberOfPlayerTwoWins = 0; // Player 2 Score
 
-    // Game Objects
+    /* Game Objects */
+    // We use object pooling for the tokens for performance instead of just instantiating and deleting them accordingly.
     public GameObject[] tokenSpaces;
-    private GameObject[] cubeTokens = new GameObject[36];
+    private GameObject[] cubeTokens = new GameObject[36]; 
     private GameObject[] cylinderTokens = new GameObject[36];
 
+    // These hold our blueprints to the tokens, as instances are made from them. (Not the same idea as objects built from classes)
     public GameObject cubeTokenPrefab;
     public GameObject cylinderTokenPrefab;
 
+    // UI Elements
     public Text gameStateText;
     public GameObject popupPanel;
     public Text popupText;
@@ -32,19 +50,24 @@ public class GameManager : MonoBehaviour
 
     public Text player1ScoreText;
     public Text player2ScoreText;
-    
 
-	// Use this for initialization
-	void Start ()
+
+    // At the start of running the game, the Start function is instantiated. This follows Unity's Execution Order
+    // of Event Functions, which you can read along here: https://docs.unity3d.com/Manual/ExecutionOrder.html
+    void Start ()
     {
+        // Initialize the singleton variable accordingly.
         if (gameManager != null)
-            Destroy(gameManager);
+            Destroy(gameObject);
 
         gameManager = this;
 
+        // Set our game management variables.
         moveMade = false;
         spacesRemaining = 36;
 
+        // We build 36 orange cubes and 36 capsules from our blueprints referenced here.
+        // By default, they start operating on their own, which goes against having a game. So we just disable them.
         for (int i = 0; i < tokenSpaces.Length; i++)
         {
             cubeTokens[i] = (GameObject)Instantiate(cubeTokenPrefab, tokenSpaces[i].transform.position, Quaternion.identity);
@@ -53,32 +76,36 @@ public class GameManager : MonoBehaviour
             cylinderTokens[i].SetActive(false);
         }
 
+        // Adds event listeners to buttons
         okButton.onClick.AddListener(() => RespondToOKButtonOnPopup());
         playAgainButton.onClick.AddListener(() => RestartGame());
-
+        
+        // Finally, choose a player and start the game.
         ChoosePlayer();
     }
 
     void Update()
     {
+        // Wait for a mouse click to be made in a space.
         if (moveMade)
         {
-            moveMade = false;
-
+            moveMade = false; // Reset trigger
+            
+            // Check for a game over after a move has been made. If yes, respond accordingly.
             if (spacesRemaining == 0 || Player1Wins() || Player2Wins())
             {
                 gameStateText.text = "GAME OVER";
                 currentState = CurrentState.GAME_OVER;
-                popupPanel.SetActive(true);
+                
 
-                if (spacesRemaining == 0)
+                if (spacesRemaining == 0) // Is the game board completely full?
                     OpenResultsPopup(0);
-                else if (Player1Wins())
+                else if (Player1Wins()) // Does Player 1 have a row, column, or diagonal of orange cubes?
                 {
                     OpenResultsPopup(1);
                     numberOfPlayerOneWins++;
                 }
-                else
+                else // Does Player 2 have a row, column, or diagonal of blue capsules?
                 {
                     OpenResultsPopup(2);
                     numberOfPlayerTwoWins++;
@@ -87,6 +114,7 @@ public class GameManager : MonoBehaviour
                 UpdatePlayerScoreText();
             }
 
+            // Transitions between states of the game
             if (currentState == CurrentState.PLAYER_ONE_TOKEN_ONE)
             {
                 currentState = CurrentState.PLAYER_ONE_TOKEN_TWO;
@@ -110,8 +138,11 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // Chooses a player out of random.
     void ChoosePlayer()
     {
+        // There is roughly a 50% chance that the first player will be Player 1, and another 50% for Player 2.
+        // Unity's Random.value follows a uniform distribution, where the probability of every value is the same.
         if (Random.value <= 0.5f)
         {
             currentState = CurrentState.PLAYER_ONE_TOKEN_ONE;
@@ -124,15 +155,19 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // Disables all active tokens, resets some game variables, stops particle systems, and starts a new game.
     public void RestartGame()
     {
-        if (currentState != CurrentState.GAME_OVER)
+        // If the game is in progress, we reset the scores.
+        if (currentState != CurrentState.GAME_OVER && currentState != CurrentState.POPUP_MESSAGE)
         {
             numberOfPlayerOneWins = 0;
             numberOfPlayerTwoWins = 0;
             UpdatePlayerScoreText();
         }
 
+        // We deactivate the tokens and stop any particle systems that are running. Doing so hides the tokens 
+        // from being rendered in the camera's frustum.
         for (int i = 0; i < tokenSpaces.Length; i++)
         {
             cubeTokens[i].SetActive(false);
@@ -145,14 +180,16 @@ public class GameManager : MonoBehaviour
         ChoosePlayer();
     }
 
+
+    // Updates the players' score on the UI.
     void UpdatePlayerScoreText()
     {
         player1ScoreText.text = "" + numberOfPlayerOneWins;
         player2ScoreText.text = "" + numberOfPlayerTwoWins;
     }
 
-
-    public bool AddTokenToBoard(byte index)
+    // Activates a token on the board, if possible. Otherwise, display a popup.
+    public void AddTokenToBoard(byte index)
     {
         if (!cubeTokens[index].activeInHierarchy && !cylinderTokens[index].activeInHierarchy &&
             (currentState == CurrentState.PLAYER_ONE_TOKEN_ONE || currentState == CurrentState.PLAYER_ONE_TOKEN_TWO) &&
@@ -166,17 +203,17 @@ public class GameManager : MonoBehaviour
         {
             popupText.text = "You can\'t place the token there. That space is occupied.";
             popupPanel.SetActive(true);
-            return false;
+            return;
         }
 
         moveMade = true;
         spacesRemaining--;
-        return true;
     }
-
+    
+    // Checks if Player 1 has a row, column, or diagonal of six cubes.
     bool Player1Wins()
     {
-        // Check all rows.
+        // Check all rows. If we have a row of cubes, play the particle systems.
         for (int row = 0; row < 6; row++)
         {
             if (cubeTokens[0 + row * 6].activeInHierarchy && cubeTokens[1 + row * 6].activeInHierarchy && cubeTokens[2 + row * 6].activeInHierarchy
@@ -193,7 +230,7 @@ public class GameManager : MonoBehaviour
                 
         }
 
-        // Check all columns.
+        // Check all columns. If we have a column of cubes, play the particle systems.
         for (int col = 0; col < 6; col++)
         {
             if (cubeTokens[0 + col].activeInHierarchy && cubeTokens[6 + col].activeInHierarchy && cubeTokens[12 + col].activeInHierarchy
@@ -210,7 +247,7 @@ public class GameManager : MonoBehaviour
             
         }
 
-        // Check the diagonals.
+        // Check the diagonals. If there is a diagonal of cubes, play the particle systems.
         // Backward Slash
         if (cubeTokens[0].activeInHierarchy && cubeTokens[7].activeInHierarchy && cubeTokens[14].activeInHierarchy && cubeTokens[21].activeInHierarchy
             && cubeTokens[28].activeInHierarchy && cubeTokens[35].activeInHierarchy)
@@ -240,9 +277,10 @@ public class GameManager : MonoBehaviour
         return false;
     }
 
+    // Checks if Player 2 has a row, column, or diagonal of six cubes.
     bool Player2Wins()
     {
-        // Check all rows.
+        // Check all rows. If we have a row of capsules, play the particle systems.
         for (int row = 0; row < 6; row++)
         {
             if (cylinderTokens[0 + row * 6].activeInHierarchy && cylinderTokens[1 + row * 6].activeInHierarchy && cylinderTokens[2 + row * 6].activeInHierarchy
@@ -258,7 +296,7 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // Check all columns.
+        // Check all columns. If we have a column of capsules, play the particle systems.
         for (int col = 0; col < 6; col++)
         {
             if (cylinderTokens[0 + col].activeInHierarchy && cylinderTokens[6 + col].activeInHierarchy && cylinderTokens[12 + col].activeInHierarchy
@@ -274,7 +312,7 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // Check the diagonals.
+        // Check the diagonals. If there is a diagonal of capsules, play the particle systems.
         // Backward Slash
         if (cylinderTokens[0].activeInHierarchy && cylinderTokens[7].activeInHierarchy && cylinderTokens[14].activeInHierarchy &&
             cylinderTokens[21].activeInHierarchy && cylinderTokens[28].activeInHierarchy && cylinderTokens[35].activeInHierarchy)
@@ -303,14 +341,17 @@ public class GameManager : MonoBehaviour
         return false;
     }
 
+    // Activates the popup panel with appropriate message.
     void OpenResultsPopup(byte messageIndex)
     {
+        // This ternary operator determines what message to show.
         popupText.text = (messageIndex == 0) ? "We have a draw..." : "Player " + messageIndex + " wins!";
+        popupPanel.SetActive(true);
     }
-
+    
+    // Deactivates the popup message.
     void RespondToOKButtonOnPopup()
     {
         popupPanel.SetActive(false);
     }
-
 }
